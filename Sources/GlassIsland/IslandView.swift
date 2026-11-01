@@ -1,14 +1,15 @@
 import SwiftUI
 
-/// Reports a view's frame (in panel space) to the AppKit control overlay so
-/// invisible AppKit buttons can be placed exactly over it.
+/// Reports a view's frame in SCREEN coordinates (.global, top-left origin).
+/// The controller converts to window space; named coordinate spaces proved
+/// unreliable here (resolved to local frames, misplacing every control).
 private struct ReportFrame: ViewModifier {
     let id: String
 
     func body(content: Content) -> some View {
         content.background(
             GeometryReader { geo in
-                let frame = geo.frame(in: .named("panelRoot"))
+                let frame = geo.frame(in: .global)
                 Color.clear
                     .onAppear { IslandControlBridge.shared.model?.reportFrame(id, frame) }
                     .onChange(of: frame) { _, newFrame in
@@ -157,7 +158,6 @@ struct PanelContent: View {
             footer
         }
         .frame(width: 344)
-        .coordinateSpace(name: "panelRoot")
         .onHover { model.setHovering($0) }
         .onExitCommand {
             if model.showOptions {

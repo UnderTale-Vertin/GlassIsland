@@ -178,21 +178,22 @@ final class IslandController: NSObject, NSWindowDelegate {
     }
 
     /// Places invisible AppKit buttons over the frames SwiftUI reported and
-    /// (re)binds their actions. Runs whenever frames or panel size change.
+    /// (re)binds their actions. Reported frames are in screen coordinates
+    /// (.global, top-left origin); convert to window space here.
     private func syncControls() {
         controlsOverlay.frame = hosting.bounds
         let frames = model.controlFrames
-        // Drop stale buttons; the frames dictionary is the source of truth.
         for sub in controlsOverlay.subviews {
             if let button = sub as? OverlayButton, frames[button.controlID] == nil {
                 sub.removeFromSuperview()
             }
         }
-        for (id, swiftFrame) in frames {
-            var frame = swiftFrame
+        for (id, screenFrame) in frames {
+            var frame = screenFrame
             if frame.width < 8 || frame.height < 8 { continue }
-            // Hosting view is flipped: SwiftUI panel-space frames (top-left
-            // origin) map 1:1 onto AppKit frames — no vertical mirroring.
+            guard let windowFrame = windowFrameInScreenCoords() else { continue }
+            frame.origin.x -= windowFrame.minX
+            frame.origin.y -= windowFrame.minY
             let button: OverlayButton
             if let existing = controlsOverlay.subviews.first(where: { ($0 as? OverlayButton)?.controlID == id }) as? OverlayButton {
                 button = existing
@@ -200,10 +201,11 @@ final class IslandController: NSObject, NSWindowDelegate {
                 button = OverlayButton(controlID: id)
                 bindAction(button)
                 controlsOverlay.addSubview(button)
-                DiagLog.log("control added \(id)")
+                DiagLog.log("control added \(id) at \(NSStringFromRect(frame))")
             }
             if button.frame != frame {
                 button.frame = frame
+                DiagLog.log("place \(id) → \(NSStringFromRect(frame))")
             }
         }
         let count = controlsOverlay.subviews.count
@@ -214,6 +216,20 @@ final class IslandController: NSObject, NSWindowDelegate {
     }
 
     private var lastControlCount = -1
+
+    /// The window's top-left corner in the same screen coordinates SwiftUI's
+    /// .global space uses (top-left origin of the window's screen).
+    private func windowFrameInScreenCoords() -> NSRect? {
+        guard let screen = panel.screen ?? NSScreen.main else { return nil }
+        let screenHeight = screen.frame.height
+        let appKitFrame = panel.frame
+        return NSRect(
+            x: appKitFrame.origin.x,
+            y: screenHeight - appKitFrame.maxY,
+            width: appKitFrame.width,
+            height: appKitFrame.height
+        )
+    }
 
     private func bindAction(_ button: OverlayButton) {
         let bridge = IslandControlBridge.shared
