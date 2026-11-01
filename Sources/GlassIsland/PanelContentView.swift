@@ -48,6 +48,7 @@ final class IconButtonView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        DiagLog.log("icon \(toolTip ?? "")")
         DispatchQueue.main.async { self.action() }
     }
 
@@ -59,6 +60,16 @@ final class IconButtonView: NSView {
 
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
+}
+
+// MARK: - Clickable text (undo)
+
+final class ClickableLabel: NSTextField {
+    var action: () -> Void = {}
+    override func mouseDown(with event: NSEvent) {
+        DiagLog.log("label \(stringValue)")
+        DispatchQueue.main.async { self.action() }
+    }
 }
 
 // MARK: - Option row
@@ -95,6 +106,7 @@ final class OptionRowView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        DiagLog.log("option \(label.stringValue)")
         DispatchQueue.main.async { self.action() }
     }
 
@@ -127,6 +139,7 @@ final class CircleCheckView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        DiagLog.log("circle click")
         DispatchQueue.main.async { self.action() }
     }
 
@@ -288,7 +301,7 @@ final class PanelContentView: NSView {
     private let unconfiguredTitle = NSTextField(labelWithString: "还没有选择任务笔记")
     private let unconfiguredHint = NSTextField(labelWithString: "点击 … 选择一篇 Markdown 笔记")
     private let noticeLabel = NSTextField(labelWithString: "")
-    private let undoButton = NSTextField(labelWithString: "撤销")
+    private let undoButton = ClickableLabel(labelWithString: "撤销")
     private let statusLabel = NSTextField(labelWithString: "Connecting to note…")
     private let refreshButton = IconButtonView(systemName: "arrow.clockwise", help: "刷新任务")
 
@@ -351,6 +364,7 @@ final class PanelContentView: NSView {
         openButton.action = { [weak self] in self?.store.openNote() }
         optionsButton.action = { [weak self] in self?.model.optionsToggled() }
         refreshButton.action = { [weak self] in self?.store.refresh() }
+        undoButton.action = { [weak self] in self?.store.undo() }
 
         optionsStack.orientation = .vertical
         optionsStack.spacing = 1

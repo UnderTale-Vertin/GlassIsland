@@ -43,11 +43,15 @@ enum ObsidianSupport {
     static func activateObsidian() -> Bool {
         if let app = NSRunningApplication.runningApplications(withBundleIdentifier: "md.obsidian").first {
             app.activate()
+            DiagLog.log("activateObsidian running=\(app.isActive ? "activated" : "ignored")")
             if app.isActive { return true }
+        } else {
+            DiagLog.log("activateObsidian not running")
         }
         // activate() from a non-active accessory app is often ignored;
         // re-opening through the workspace reliably brings Obsidian forward.
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "md.obsidian") else {
+            DiagLog.log("activateObsidian FAILED: Obsidian not installed")
             return false
         }
         let configuration = NSWorkspace.OpenConfiguration()
