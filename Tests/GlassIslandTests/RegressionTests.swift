@@ -68,31 +68,29 @@ final class OpenLinkTests: XCTestCase {
     }
 }
 
-/// The inline-HTML subset renderer used for task bodies.
+/// The inline-HTML subset renderer used for task bodies (AppKit variant).
 final class InlineHTMLTests: XCTestCase {
-    private func attributed(_ html: String) -> AttributedString {
-        InlineHTML.attributed(
-            html,
-            ink: .black, muted: .gray, blue: .blue, baseSize: 15
-        )
+    private func attributed(_ html: String) -> NSAttributedString {
+        InlineHTML.nsAttributed(html, ink: .black, blue: .blue, baseSize: 15)
     }
 
     func testDecodesEntitiesAndKeepsText() {
-        let text = String(attributed("a &lt; b &amp; c &#39;d&#39;").characters)
+        let text = attributed("a &lt; b &amp; c &#39;d&#39;").string
         XCTAssertEqual(text, "a < b & c 'd'")
     }
 
     func testBoldItalicCodeStrikeAndBreak() {
         let out = attributed("<strong>重点</strong><em>斜</em><code>x=1</code><s>删</s><br>下行")
-        let text = String(out.characters)
-        XCTAssertEqual(text, "重点斜x=1删\n下行")
+        XCTAssertEqual(out.string, "重点斜x=1删\n下行")
     }
 
     func testLinkCarriesURLAndLabel() {
         let out = attributed(#"<a href="obsidian://open?vault=V&amp;file=Note.md" class="note-link">笔记</a>"#)
-        let text = String(out.characters)
-        XCTAssertEqual(text, "笔记")
-        let links = out.runs.compactMap { $0.link }
+        XCTAssertEqual(out.string, "笔记")
+        var links: [URL] = []
+        out.enumerateAttribute(.link, in: NSRange(location: 0, length: out.length)) { value, _, _ in
+            if let url = value as? URL { links.append(url) }
+        }
         XCTAssertEqual(links.count, 1)
         XCTAssertEqual(links.first?.scheme, "obsidian")
         XCTAssertTrue(links.first?.absoluteString.contains("file=Note.md") ?? false)
@@ -100,7 +98,10 @@ final class InlineHTMLTests: XCTestCase {
 
     func testWikilinkHrefPercentEncodingSurvives() {
         let out = attributed(#"<a href="obsidian://open?vault=V&amp;file=Projects%2F%E4%B8%AD%E6%96%87">中文</a>"#)
-        let links = out.runs.compactMap { $0.link }
+        var links: [URL] = []
+        out.enumerateAttribute(.link, in: NSRange(location: 0, length: out.length)) { value, _, _ in
+            if let url = value as? URL { links.append(url) }
+        }
         XCTAssertEqual(links.first?.absoluteString, "obsidian://open?vault=V&file=Projects%2F%E4%B8%AD%E6%96%87")
     }
 }

@@ -1,9 +1,8 @@
-import SwiftUI
+import AppKit
 
-/// Converts the small inline-HTML subset that markdown-it's renderInline
-/// emits (a / strong / em / code / s / del / br) into an AttributedString
-/// for SwiftUI Text. All links arriving here are already absolute
-/// obsidian:// or https:// URLs built by tasks.js.
+/// Renders the small inline-HTML subset markdown-it emits into an
+/// NSAttributedString for AppKit text views. Same parser as before, AppKit
+/// attributes instead of SwiftUI.
 enum InlineHTML {
     private struct Style {
         var bold = false
@@ -13,33 +12,41 @@ enum InlineHTML {
         var link: String?
     }
 
-    static func attributed(_ html: String, ink: Color, muted: Color, blue: Color, baseSize: CGFloat) -> AttributedString {
-        var out = AttributedString()
+    static func nsAttributed(_ html: String, ink: NSColor, blue: NSColor, baseSize: CGFloat) -> NSAttributedString {
+        let out = NSMutableAttributedString()
         var stack: [Style] = [Style()]
 
         func append(_ raw: String) {
             guard !raw.isEmpty else { return }
             let style = stack.last ?? Style()
-            var container = AttributeContainer()
-            var font = Font.system(size: baseSize)
-            if style.bold { font = font.bold() }
-            if style.italic { font = font.italic() }
-            if style.code {
-                font = Font.system(size: baseSize * 0.87, design: .monospaced)
-                container.backgroundColor = Color.white.opacity(0.09)
+            var font = NSFont.systemFont(ofSize: baseSize)
+            if style.bold { font = NSFont.boldSystemFont(ofSize: baseSize) }
+            if style.italic {
+                font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
             }
-            container.font = font
+            if style.code {
+                font = NSFont.monospacedSystemFont(ofSize: baseSize * 0.87, weight: .regular)
+            }
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineSpacing = 6
+            var attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .paragraphStyle: paragraph,
+            ]
             if let link = style.link, let url = URL(string: decodeEntities(link)) {
-                container.foregroundColor = blue
-                container.underlineStyle = NSUnderlineStyle.single
-                container.link = url
+                attributes[.foregroundColor] = blue
+                attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                attributes[.link] = url
             } else {
-                container.foregroundColor = ink
+                attributes[.foregroundColor] = ink
+            }
+            if style.code {
+                attributes[.backgroundColor] = NSColor.white.withAlphaComponent(0.09)
             }
             if style.strike {
-                container.strikethroughStyle = NSUnderlineStyle.single
+                attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
             }
-            out.append(AttributedString(decodeEntities(raw), attributes: container))
+            out.append(NSAttributedString(string: decodeEntities(raw), attributes: attributes))
         }
 
         var cursor = html.startIndex
@@ -72,7 +79,7 @@ enum InlineHTML {
                     stack.append(style)
                 }
             default:
-                break // unknown tags: keep their text content
+                break
             }
             cursor = end == html.endIndex ? html.endIndex : html.index(after: end)
         }
@@ -91,9 +98,8 @@ enum InlineHTML {
         return String(inner[inner.index(after: valueStart)..<valueEnd])
     }
 
-    /// Decodes the HTML entities markdown-it escapes (and any numeric ones
-    /// present in source text). `&amp;` is handled last so double escapes
-    /// resolve in one pass.
+    /// Decodes the HTML entities markdown-it escapes (and numeric ones).
+    /// `&amp;` resolves last so double escapes resolve in one pass.
     static func decodeEntities(_ text: String) -> String {
         guard text.contains("&") else { return text }
         var result = ""
