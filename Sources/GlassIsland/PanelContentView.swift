@@ -65,10 +65,10 @@ final class IconButtonView: NSView {
 // MARK: - Clickable text (undo)
 
 final class ClickableLabel: NSTextField {
-    var action: () -> Void = {}
+    var onTap: () -> Void = {}
     override func mouseDown(with event: NSEvent) {
         DiagLog.log("label \(stringValue)")
-        DispatchQueue.main.async { self.action() }
+        DispatchQueue.main.async { self.onTap() }
     }
 }
 
@@ -364,7 +364,7 @@ final class PanelContentView: NSView {
         openButton.action = { [weak self] in self?.store.openNote() }
         optionsButton.action = { [weak self] in self?.model.optionsToggled() }
         refreshButton.action = { [weak self] in self?.store.refresh() }
-        undoButton.action = { [weak self] in self?.store.undo() }
+        undoButton.onTap = { [weak self] in self?.store.undo() }
 
         optionsStack.orientation = .vertical
         optionsStack.spacing = 1
