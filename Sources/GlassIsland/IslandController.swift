@@ -121,6 +121,7 @@ final class IslandController: NSObject, NSWindowDelegate {
         hosting.addSubview(controlsOverlay)
         hosting.addSubview(toggleZoneView)
         IslandControlBridge.shared.model = model
+        DiagLog.log("hosting flipped=\(hosting.isFlipped)")
         model.$controlFrames
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.syncControls() }
@@ -180,7 +181,6 @@ final class IslandController: NSObject, NSWindowDelegate {
     /// (re)binds their actions. Runs whenever frames or panel size change.
     private func syncControls() {
         controlsOverlay.frame = hosting.bounds
-        let height = hosting.bounds.height
         let frames = model.controlFrames
         // Drop stale buttons; the frames dictionary is the source of truth.
         for sub in controlsOverlay.subviews {
@@ -191,7 +191,8 @@ final class IslandController: NSObject, NSWindowDelegate {
         for (id, swiftFrame) in frames {
             var frame = swiftFrame
             if frame.width < 8 || frame.height < 8 { continue }
-            frame.origin.y = height - swiftFrame.maxY
+            // Hosting view is flipped: SwiftUI panel-space frames (top-left
+            // origin) map 1:1 onto AppKit frames — no vertical mirroring.
             let button: OverlayButton
             if let existing = controlsOverlay.subviews.first(where: { ($0 as? OverlayButton)?.controlID == id }) as? OverlayButton {
                 button = existing
@@ -256,11 +257,13 @@ final class IslandController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Positions the AppKit click zone over the capsule/panel title area
-    /// (top of the window). When collapsed it covers the whole pill.
+    /// Positions the AppKit click zone over the capsule/panel title area.
+    /// NSHostingView is FLIPPED (origin top-left), so y=4 means 4pt from the
+    /// top — the title row.
     private func layoutToggleZone() {
         let bounds = hosting.bounds
-        toggleZoneView.frame = NSRect(x: 12, y: bounds.height - 66, width: 150, height: 62)
+        toggleZoneView.frame = NSRect(x: 12, y: 4, width: 150, height: 62)
+        _ = bounds
     }
 
     /// Clips the window content to the glass shape so nothing (hosting layer
