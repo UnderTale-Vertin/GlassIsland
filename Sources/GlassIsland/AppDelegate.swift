@@ -179,10 +179,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model?.pickingFromObsidian = false
         let (title, needsPermission) = ObsidianSupport.frontWindowTitle()
         if needsPermission {
-            store?.showNotice(TaskStore.Notice(
-                text: "需要授权：系统设置 → 隐私与安全性 → 辅助功能/自动化，允许 GlassIsland 控制 Obsidian",
-                isError: true, autoDismissAfter: 12
-            ))
+            // No automation permission: fall back to a zero-permission file
+            // picker rooted at the user's last-open vault.
+            fallBackToVaultPanel()
             return
         }
         guard let title, let source = ObsidianSupport.parseWindowTitle(title) else {
@@ -208,6 +207,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DiagLog.log("obsidian pick → \(resolved.path) vault=\(source.vaultName)")
         store?.reloadConfiguration()
         store?.showNotice(TaskStore.Notice(text: "任务源已设为 \(source.noteName)", isError: false, autoDismissAfter: 4))
+    }
+
+    /// Permission-free fallback: open a picker inside the user's vault.
+    private func fallBackToVaultPanel() {
+        guard let vault = ObsidianSupport.preferredVault() else {
+            store?.showNotice(TaskStore.Notice(
+                text: "需要授权：系统设置 → 隐私与安全性 → 自动化，允许 GlassIsland 控制 Obsidian（或改用「选择任务笔记…」）",
+                isError: true, autoDismissAfter: 12
+            ))
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.directoryURL = URL(fileURLWithPath: vault.path)
+        panel.message = "未授权自动化：已定位到笔记库「\(vault.name)」，请直接选择目标笔记"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        config.sourcePath = url.path
+        config.vault = vault.name
+        config.noteFile = noteFileRelativeToVault(url.path, vaultPath: vault.path)
+        config.save()
+        DiagLog.log("vault panel pick → \(url.path) vault=\(vault.name)")
+        store?.reloadConfiguration()
+        store?.showNotice(TaskStore.Notice(text: "任务源已设为 \(url.lastPathComponent)", isError: false, autoDismissAfter: 4))
     }
 
     /// Folder source: watch every Markdown note inside a directory.

@@ -54,6 +54,12 @@ final class ToggleZoneView: NSView {
     override func mouseExited(with event: NSEvent) { onHover?(false) }
 }
 
+/// Flipped root: everything inside uses top-left origin, matching the
+/// SwiftUI background and the PanelContent layout math.
+final class FlippedContainerView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 /// Owns the island window: passive glass background hosting, the AppKit
 /// panel content, the title click zone and the top-edge hotspot.
 final class IslandController: NSObject, NSWindowDelegate {
@@ -112,7 +118,7 @@ final class IslandController: NSObject, NSWindowDelegate {
         hotspotPanel.contentView = hotspotView
 
         // Root: glass background below, AppKit content above, click zone top.
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 344, height: 40))
+        let root = FlippedContainerView(frame: NSRect(x: 0, y: 0, width: 344, height: 40))
         root.wantsLayer = true
         root.layer?.cornerRadius = 17
         root.layer?.masksToBounds = true
@@ -192,6 +198,17 @@ final class IslandController: NSObject, NSWindowDelegate {
             self, selector: #selector(screenChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil
         )
+        startClickAudit()
+    }
+
+    /// Always-on click audit for feature verification (diag.log).
+    private func startClickAudit() {
+        NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            if let self, event.window === self.panel {
+                DiagLog.log("raw click \(NSStringFromPoint(event.locationInWindow))")
+            }
+            return event
+        }
     }
 
     func show() {

@@ -81,6 +81,40 @@ enum ObsidianSupport {
         return result
     }
 
+    struct VaultEntry {
+        let name: String
+        let path: String
+        let isOpen: Bool
+        let ts: Double
+    }
+
+    static func vaultEntries(from data: Data) -> [VaultEntry] {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let vaults = obj["vaults"] as? [String: Any] else { return [] }
+        var result: [VaultEntry] = []
+        for (_, entry) in vaults {
+            guard let entry = entry as? [String: Any],
+                  let path = entry["path"] as? String else { continue }
+            result.append(VaultEntry(
+                name: (path as NSString).lastPathComponent,
+                path: path,
+                isOpen: (entry["open"] as? Bool) ?? false,
+                ts: (entry["ts"] as? Double) ?? 0
+            ))
+        }
+        return result
+    }
+
+    /// The vault Obsidian last had open (its own "open" flag, else newest).
+    static func preferredVault() -> VaultEntry? {
+        let url = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("obsidian/obsidian.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let entries = vaultEntries(from: data)
+        return entries.first { $0.isOpen } ?? entries.max { $0.ts < $1.ts }
+    }
+
     static func vaultPath(named name: String) -> String? {
         vaultPaths()[name]
     }
