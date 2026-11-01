@@ -22,6 +22,9 @@ final class TaskStore: ObservableObject {
 
     private let configProvider: () -> Config
     private let bridge: MarkdownBridge
+    /// Set by the app layer: opens the vault-rooted picker so the user can
+    /// switch to a real Obsidian note in one step.
+    var onNeedRealNote: (() -> Void)?
     private let watcher = NoteWatcher()
     private let reloadQueue = DispatchQueue(label: "GlassIsland.Reload", qos: .userInitiated)
     private var noticeTimer: DispatchSourceTimer?
