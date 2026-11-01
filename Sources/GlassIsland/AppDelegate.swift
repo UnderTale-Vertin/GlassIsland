@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.config = Config.load()
         }
+        store.onNeedRealNote = { [weak self] in self?.fallBackToVaultPanel() }
         setupStatusItem()
         if config.isConfigured {
             store.start()
