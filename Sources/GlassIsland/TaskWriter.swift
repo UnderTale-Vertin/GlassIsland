@@ -21,6 +21,7 @@ enum WriteBackError: LocalizedError, Equatable {
 }
 
 struct ToggleResult: Equatable {
+    let filePath: String
     let line: String
     let lineNumber: Int
 }
@@ -95,6 +96,6 @@ enum TaskWriter {
         try handle.synchronize()
 
         let newLine = line.replacingCharacters(in: stateRange, with: done ? "x" : " ")
-        return ToggleResult(line: newLine, lineNumber: index)
+        return ToggleResult(filePath: sourcePath, line: newLine, lineNumber: index)
     }
 }

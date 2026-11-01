@@ -16,8 +16,9 @@ final class TaskStore: ObservableObject {
     @Published private(set) var notice: Notice?
     @Published private(set) var undoTask: ToggleResult?
     @Published private(set) var pending = false
-    @Published private(set) var pendingLine: String?
+    @Published private(set) var pendingItemID: String?
     @Published private(set) var configured = false
+    @Published private(set) var sourceIsFolder = false
 
     private let configProvider: () -> Config
     private let bridge: MarkdownBridge
@@ -68,9 +69,8 @@ final class TaskStore: ObservableObject {
 
     private func reloadSync() {
         let cfg = configProvider()
-        guard cfg.isConfigured, !cfg.sourcePath.isEmpty,
-              let data = FileManager.default.contents(atPath: cfg.sourcePath),
-              let text = String(data: data, encoding: .utf8) else {
+        configured = cfg.isConfigured
+        guard cfg.isConfigured, !cfg.sourcePath.isEmpty else {
             DispatchQueue.main.async {
                 self.sourceText = nil
                 self.tasks = []
@@ -81,7 +81,7 @@ final class TaskStore: ObservableObject {
         }
         var items: [TaskItem] = []
         do {
-            items = try bridge.extractTasks(from: text, vault: cfg.vault, noteFile: cfg.noteFile)
+            items = try loadTasks(sourcePath: cfg.sourcePath, vault: cfg.vault, noteFile: cfg.noteFile)
         } catch {
             DispatchQueue.main.async {
                 self.statusText = "Note unavailable"
@@ -91,7 +91,7 @@ final class TaskStore: ObservableObject {
         }
         DispatchQueue.main.async {
             let reconnected = self.statusText == "Note unavailable" && self.sourceText != nil
-            self.sourceText = text
+            self.sourceText = "loaded"
             self.tasks = items
             self.statusText = "Obsidian · Auto sync"
             if reconnected {
@@ -102,9 +102,61 @@ final class TaskStore: ObservableObject {
         }
     }
 
+    /// Reads the configured source. A directory source aggregates every
+    /// Markdown file inside it (hidden folders skipped); a file source is
+    /// the single note. Items carry their file so write-back stays exact.
+    func loadTasks(sourcePath: String, vault: String, noteFile: String) throws -> [TaskItem] {
+        var isDir: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: sourcePath, isDirectory: &isDir)
+        guard exists else { throw WriteBackError.noteMissing }
+        sourceIsFolder = isDir.boolValue
+        if !isDir.boolValue {
+            guard let data = FileManager.default.contents(atPath: sourcePath),
+                  let text = String(data: data, encoding: .utf8) else { throw WriteBackError.notUTF8 }
+            return try bridge.extractTasks(from: text, vault: vault, noteFile: noteFile)
+                .map { item in var i = item; i.filePath = sourcePath; return i }
+        }
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(at: URL(fileURLWithPath: sourcePath), includingPropertiesForKeys: nil) else {
+            throw WriteBackError.noteMissing
+        }
+        var files: [URL] = []
+        for case let url as URL in enumerator {
+            if url.lastPathComponent.hasPrefix(".") {
+                enumerator.skipDescendants()
+                continue
+            }
+            let ext = url.pathExtension.lowercased()
+            if ext == "md" || ext == "markdown" { files.append(url) }
+        }
+        files.sort { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+        var items: [TaskItem] = []
+        for file in files {
+            guard let data = try? Data(contentsOf: file),
+                  let text = String(data: data, encoding: .utf8) else { continue }
+            let relative = noteFileFor(file: file, sourcePath: sourcePath, vault: vault)
+            for var item in try bridge.extractTasks(from: text, vault: vault, noteFile: relative) {
+                item.filePath = file.path
+                items.append(item)
+            }
+        }
+        return items
+    }
+
+    /// Obsidian links need vault-relative paths; without a resolvable vault
+    /// fall back to folder-relative (single-note mode always uses noteFile).
+    private func noteFileFor(file: URL, sourcePath: String, vault: String) -> String {
+        if let vaultPath = ObsidianSupport.vaultPath(named: vault),
+           file.path.hasPrefix(vaultPath + "/") {
+            return String(file.path.dropFirst(vaultPath.count + 1))
+        }
+        let baseLength = (sourcePath as NSString).length
+        return (file.path as NSString).substring(from: baseLength + 1)
+    }
+
     // MARK: - Actions
 
-    /// Complete a task: write-back to the note, then refresh. Mirrors the
+    /// Complete a task: write-back to its note, then refresh. Mirrors the
     /// original checkbox handler including its pending guard and 20s timeout.
     func toggle(_ item: TaskItem) {
         guard !pending else {
@@ -117,12 +169,12 @@ final class TaskStore: ObservableObject {
             return
         }
         pending = true
-        pendingLine = item.line
+        pendingItemID = item.id
         let token = UUID()
         pendingTimeout = DispatchWorkItem { [weak self] in
             guard let self, self.pending, self.pendingToken == token else { return }
             self.pending = false
-            self.pendingLine = nil
+            self.pendingItemID = nil
             self.showNotice(Notice(text: "未收到保存结果，请核对笔记后再操作", isError: true, autoDismissAfter: nil))
             self.refresh()
         }
@@ -131,11 +183,13 @@ final class TaskStore: ObservableObject {
         }
         pendingToken = token
 
-        let path = cfg.sourcePath
+        let path = item.filePath.isEmpty ? cfg.sourcePath : item.filePath
+        DiagLog.log("toggle → \(path) line\(item.lineNumber) done=true")
         reloadQueue.async { [weak self] in
-            defer { DispatchQueue.main.async { self?.pending = false; self?.pendingLine = nil } }
+            defer { DispatchQueue.main.async { self?.pending = false; self?.pendingItemID = nil } }
             do {
                 let result = try TaskWriter.toggle(sourcePath: path, line: item.line, lineNumber: item.lineNumber, done: true)
+                DiagLog.log("toggle OK \(result.filePath) → line\(result.lineNumber)")
                 DispatchQueue.main.async {
                     guard let self, self.pendingToken == token else { return }
                     self.pendingTimeout?.cancel()
@@ -145,6 +199,7 @@ final class TaskStore: ObservableObject {
                 self?.suppressWatcher()
                 self?.refresh()
             } catch {
+                DiagLog.log("toggle FAILED: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     guard let self, self.pendingToken == token else { return }
                     self.pendingTimeout?.cancel()
@@ -161,11 +216,13 @@ final class TaskStore: ObservableObject {
         let cfg = configProvider()
         guard cfg.isConfigured else { return }
         pending = true
-        let path = cfg.sourcePath
+        pendingItemID = task.line
+        DiagLog.log("undo → \(task.filePath) line\(task.lineNumber)")
         reloadQueue.async { [weak self] in
             defer { DispatchQueue.main.async { self?.pending = false } }
             do {
-                _ = try TaskWriter.toggle(sourcePath: path, line: task.line, lineNumber: task.lineNumber, done: false)
+                let result = try TaskWriter.toggle(sourcePath: task.filePath, line: task.line, lineNumber: task.lineNumber, done: false)
+                DiagLog.log("undo OK \(result.filePath) → line\(result.lineNumber)")
                 DispatchQueue.main.async {
                     self?.undoTask = nil
                     self?.showNotice(Notice(text: "已撤销完成", isError: false, autoDismissAfter: 3))
@@ -173,6 +230,7 @@ final class TaskStore: ObservableObject {
                 self?.suppressWatcher()
                 self?.refresh()
             } catch {
+                DiagLog.log("undo FAILED: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self?.showNotice(Notice(text: error.localizedDescription, isError: true, autoDismissAfter: nil))
                 }

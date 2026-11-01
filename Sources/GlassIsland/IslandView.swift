@@ -1,5 +1,30 @@
 import SwiftUI
 
+/// Reports a view's frame (in panel space) to the AppKit control overlay so
+/// invisible AppKit buttons can be placed exactly over it.
+private struct ReportFrame: ViewModifier {
+    let id: String
+
+    func body(content: Content) -> some View {
+        content.background(
+            GeometryReader { geo in
+                let frame = geo.frame(in: .named("panelRoot"))
+                Color.clear
+                    .onAppear { IslandControlBridge.shared.model?.reportFrame(id, frame) }
+                    .onChange(of: frame) { _, newFrame in
+                        IslandControlBridge.shared.model?.reportFrame(id, newFrame)
+                    }
+            }
+        )
+    }
+}
+
+private extension View {
+    func reportFrame(_ id: String) -> some View {
+        modifier(ReportFrame(id: id))
+    }
+}
+
 // Palette mirrors the original resources/ui/style.css dark glass theme.
 enum Palette {
     static let ink = Color(red: 0.949, green: 0.965, blue: 0.980)
@@ -132,6 +157,7 @@ struct PanelContent: View {
             footer
         }
         .frame(width: 344)
+        .coordinateSpace(name: "panelRoot")
         .onHover { model.setHovering($0) }
         .onExitCommand {
             if model.showOptions {
@@ -158,19 +184,13 @@ struct PanelContent: View {
                     .accessibilityLabel("未完成任务数")
             }
             Spacer(minLength: 8)
-            IconButton(systemName: "arrow.up.forward.app", help: "在 Obsidian 中打开收件箱") {
-                store.openNote()
-            }
-            .disabled(store.pending)
+            IconButton(systemName: "arrow.up.forward.app", help: "在 Obsidian 中打开收件箱")
+                .reportFrame("ctrl:open")
+                .opacity(store.pending ? 0.55 : 1)
             // Pure-SwiftUI inline options: popup menus (SwiftUI Menu or
             // NSMenu.popUp) cannot open from a non-activating panel.
-            IconButton(
-                systemName: "ellipsis",
-                help: "选项",
-                tint: model.showOptions ? Palette.blue : nil
-            ) {
-                model.optionsToggled()
-            }
+            IconButton(systemName: "ellipsis", help: "选项", tint: model.showOptions ? Palette.blue : nil)
+                .reportFrame("ctrl:options")
         }
         .padding(EdgeInsets(top: 20, leading: 22, bottom: 14, trailing: 18))
     }
@@ -185,6 +205,20 @@ struct PanelContent: View {
             OptionRow(icon: "arrow.up.forward.app", label: "在 Obsidian 中打开") {
                 model.showOptions = false
                 model.onMenuAction(.openNote)
+            }
+            if model.pickingFromObsidian {
+                OptionRow(icon: "checkmark.circle.fill", label: "完成：采用 Obsidian 当前笔记", highlight: true) {
+                    model.showOptions = false
+                    model.onMenuAction(.finishObsidianPick)
+                }
+            } else {
+                OptionRow(icon: "books.vertical", label: "从 Obsidian 选择当前笔记") {
+                    model.onMenuAction(.startObsidianPick)
+                }
+            }
+            OptionRow(icon: "folder", label: "选择文件夹（监控其中全部笔记）…") {
+                model.showOptions = false
+                model.onMenuAction(.pickFolder)
             }
             OptionRow(
                 icon: model.mode == .island ? "rectangle.on.rectangle" : "dot.square",
@@ -245,7 +279,7 @@ struct PanelContent: View {
                             TaskRow(
                                 task: task,
                                 showsSeparator: index > 0,
-                                isPending: store.pendingLine == task.line,
+                                isPending: store.pendingItemID == task.id,
                                 toggle: { store.toggle(task) },
                                 hoveredLine: $model.hoveredLine
                             )
@@ -291,14 +325,14 @@ struct PanelContent: View {
                     }
                     Spacer(minLength: 8)
                     if store.undoTask != nil {
-                        Button("撤销") { store.undo() }
+                        Text("撤销")
                             .font(.system(size: 12))
                             .foregroundColor(Palette.blue)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(RoundedRectangle(cornerRadius: 7).fill(Palette.undoBackground))
-                            .buttonStyle(.plain)
-                            .disabled(store.pending)
+                            .opacity(store.pending ? 0.55 : 1)
+                            .reportFrame("ctrl:undo")
                     }
                 }
                 .padding(.top, 6)
@@ -309,9 +343,9 @@ struct PanelContent: View {
                     .italic()
                     .foregroundColor(Palette.muted)
                 Spacer(minLength: 8)
-                IconButton(systemName: "arrow.clockwise", help: "刷新任务") {
-                    store.refresh()
-                }
+                IconButton(systemName: "arrow.clockwise", help: "刷新任务")
+                    .reportFrame("ctrl:refresh")
+                    .opacity(store.pending ? 0.55 : 1)
             }
             .padding(.top, 4)
         }
@@ -331,20 +365,18 @@ private struct TaskRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Button(action: toggle) {
-                ZStack {
-                    Circle()
-                        .fill(Color.white.opacity(hovering ? 0.13 : 0.08))
-                    Circle()
-                        .strokeBorder(hovering ? Palette.checkHover : Palette.checkBorder, lineWidth: 1.4)
-                }
-                .frame(width: 16, height: 16)
-                .frame(width: 28)
-                .contentShape(Rectangle())
-                .padding(.vertical, 4.5)
+            // Visual only; the AppKit overlay ("circle:<id>") fires the toggle.
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(hovering ? 0.13 : 0.08))
+                Circle()
+                    .strokeBorder(hovering ? Palette.checkHover : Palette.checkBorder, lineWidth: 1.4)
             }
-            .buttonStyle(.plain)
-            .disabled(isPending)
+            .frame(width: 16, height: 16)
+            .frame(width: 28)
+            .contentShape(Rectangle())
+            .padding(.vertical, 4.5)
+            .reportFrame("circle:\(task.id)")
             .accessibilityLabel("完成：\(task.body)")
 
             Text(InlineHTML.attributed(task.html, ink: Palette.ink, muted: Palette.muted, blue: Palette.blue, baseSize: 15))
@@ -380,29 +412,31 @@ private struct OptionRow: View {
     let icon: String
     let label: String
     var isDestructive = false
+    var highlight = false
     let action: () -> Void
     @State private var hovering = false
 
+    private var controlID: String { "option:\(label)" }
+
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 9) {
-                Image(systemName: icon)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 13, height: 13)
-                    .foregroundColor(hovering ? Palette.blue : Palette.muted)
-                Text(label)
-                    .font(.system(size: 13))
-                    .foregroundColor(hovering ? Palette.ink : Palette.muted)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? Palette.control : Color.clear))
-            .contentShape(Rectangle())
+        HStack(spacing: 9) {
+            Image(systemName: icon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 13, height: 13)
+                .foregroundColor(hovering || highlight ? Palette.blue : Palette.muted)
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(isDestructive ? Palette.errorText : (hovering || highlight ? Palette.ink : Palette.muted))
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? Palette.control : Color.clear))
+        .contentShape(Rectangle())
         .onHover { hovering = $0 }
+        .onAppear { IslandControlBridge.shared.setAction(controlID, action) }
+        .reportFrame(controlID)
     }
 }
 
@@ -410,23 +444,19 @@ private struct IconButton: View {
     let systemName: String
     let help: String
     var tint: Color? = nil
-    let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 15, height: 15)
-                .foregroundColor(hovering ? Palette.blue : (tint ?? Palette.muted))
-                .frame(width: 32, height: 32)
-                .background(RoundedRectangle(cornerRadius: 9).fill(hovering ? Palette.control : Color.clear))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .help(help)
+        Image(systemName: systemName)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 15, height: 15)
+            .foregroundColor(hovering ? Palette.blue : (tint ?? Palette.muted))
+            .frame(width: 32, height: 32)
+            .background(RoundedRectangle(cornerRadius: 9).fill(hovering ? Palette.control : Color.clear))
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+            .help(help)
     }
 }
 

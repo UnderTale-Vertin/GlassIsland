@@ -61,6 +61,7 @@ final class IslandController: NSObject, NSWindowDelegate {
     private let hotspotPanel: NSPanel
     private let hotspotView: HotspotView
     private let toggleZoneView = ToggleZoneView(frame: .zero)
+    private let controlsOverlay = ControlsOverlayView(frame: .zero)
 
     init(model: IslandModel, store: TaskStore, configProvider: @escaping () -> Config) {
         self.model = model
@@ -111,7 +112,14 @@ final class IslandController: NSObject, NSWindowDelegate {
             self?.model.optionsToggled()
         }
         toggleZoneView.toolTip = "点一下固定；再点一下消失；右键选项"
+        hosting.addSubview(controlsOverlay)
         hosting.addSubview(toggleZoneView)
+        IslandControlBridge.shared.model = model
+        model.$controlFrames
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.syncControls() }
+            .store(in: &cancellables)
+        startClickAudit()
         sizeObservation = hosting.observe(\.intrinsicContentSize, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated {
                 self?.refit()
@@ -158,11 +166,79 @@ final class IslandController: NSObject, NSWindowDelegate {
     // MARK: - Layout
 
     private func handleToggleZone() {
-        if ProcessInfo.processInfo.environment["GLASSISLAND_LOG"] == "1" {
-            NSLog("TOGGLEZONE click pinned=%d expanded=%d visible=%d",
-                  model.pinned ? 1 : 0, model.expanded ? 1 : 0, model.visible ? 1 : 0)
-        }
+        DiagLog.log("toggleZone click pinned=\(model.pinned) expanded=\(model.expanded) visible=\(model.visible)")
         model.toggleZoneClicked()
+    }
+
+    /// Places invisible AppKit buttons over the frames SwiftUI reported and
+    /// (re)binds their actions. Runs whenever frames or panel size change.
+    private func syncControls() {
+        let height = hosting.bounds.height
+        let frames = model.controlFrames
+        // Drop stale buttons; the frames dictionary is the source of truth.
+        for sub in controlsOverlay.subviews {
+            if let button = sub as? OverlayButton, frames[button.controlID] == nil {
+                sub.removeFromSuperview()
+            }
+        }
+        for (id, swiftFrame) in frames {
+            var frame = swiftFrame
+            if frame.width < 8 || frame.height < 8 { continue }
+            frame.origin.y = height - swiftFrame.maxY
+            let button: OverlayButton
+            if let existing = controlsOverlay.subviews.first(where: { ($0 as? OverlayButton)?.controlID == id }) as? OverlayButton {
+                button = existing
+            } else {
+                button = OverlayButton(controlID: id)
+                bindAction(button)
+                controlsOverlay.addSubview(button)
+            }
+            if button.frame != frame {
+                button.frame = frame
+            }
+        }
+    }
+
+    private func bindAction(_ button: OverlayButton) {
+        let bridge = IslandControlBridge.shared
+        switch button.controlID {
+        case "ctrl:open":
+            bridge.setAction(button.controlID) { [weak self] in self?.store.openNote() }
+        case "ctrl:options":
+            bridge.setAction(button.controlID) { [weak self] in self?.model.optionsToggled() }
+        case "ctrl:undo":
+            bridge.setAction(button.controlID) { [weak self] in
+                guard let self, !self.store.pending else { return }
+                self.store.undo()
+            }
+        case "ctrl:refresh":
+            bridge.setAction(button.controlID) { [weak self] in self?.store.refresh() }
+        default:
+            if button.controlID.hasPrefix("circle:") {
+                let controlID = button.controlID
+                bridge.setAction(controlID) { [weak self] in
+                    guard let self,
+                          let task = self.store.tasks.first(where: { "circle:\($0.id)" == controlID }) else { return }
+                    self.store.toggle(task)
+                }
+                button.onHover = { [weak self] hovering in
+                    guard let self,
+                          let task = self.store.tasks.first(where: { "circle:\($0.id)" == controlID }) else { return }
+                    self.model.hoveredLine = hovering ? task.line : nil
+                }
+            }
+            // "option:<label>" actions are registered by the SwiftUI rows.
+        }
+    }
+
+    /// Always-on click audit for feature verification (diag.log).
+    private func startClickAudit() {
+        NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            if let self, event.window === self.panel {
+                DiagLog.log("raw click \(NSStringFromPoint(event.locationInWindow))")
+            }
+            return event
+        }
     }
 
     /// Positions the AppKit click zone over the capsule/panel title area

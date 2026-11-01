@@ -136,9 +136,93 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store?.openNote()
         case .pickNote:
             promptForNote(firstRun: false)
+        case .pickFolder:
+            promptForFolder()
+        case .startObsidianPick:
+            startObsidianPick()
+        case .finishObsidianPick:
+            finishObsidianPick()
         case .quit:
             NSApp.terminate(nil)
         }
+    }
+
+    /// Lets the user pick the task source inside Obsidian: activate it, wait
+    /// for them to open the target note, then resolve it from the window
+    /// title plus Obsidian's vault registry.
+    private func startObsidianPick() {
+        guard ObsidianSupport.activateObsidian() else {
+            store?.showNotice(TaskStore.Notice(
+                text: "未检测到 Obsidian，请先安装，或改用「选择任务笔记…」",
+                isError: true, autoDismissAfter: 6
+            ))
+            return
+        }
+        model?.pickingFromObsidian = true
+        model?.showOptions = true
+        store?.showNotice(TaskStore.Notice(
+            text: "在 Obsidian 中打开目标笔记，然后点「完成：采用 Obsidian 当前笔记」",
+            isError: false, autoDismissAfter: nil
+        ))
+    }
+
+    private func finishObsidianPick() {
+        model?.pickingFromObsidian = false
+        let (title, needsPermission) = ObsidianSupport.frontWindowTitle()
+        if needsPermission {
+            store?.showNotice(TaskStore.Notice(
+                text: "需要授权：系统设置 → 隐私与安全性 → 辅助功能/自动化，允许 GlassIsland 控制 Obsidian",
+                isError: true, autoDismissAfter: 12
+            ))
+            return
+        }
+        guard let title, let source = ObsidianSupport.parseWindowTitle(title) else {
+            store?.showNotice(TaskStore.Notice(
+                text: "未检测到正在编辑的笔记，请先在 Obsidian 打开一篇笔记再试",
+                isError: true, autoDismissAfter: 8
+            ))
+            return
+        }
+        guard let resolved = ObsidianSupport.resolveNote(
+            noteName: source.noteName, vaultName: source.vaultName, vaults: ObsidianSupport.vaultPaths()
+        ) else {
+            store?.showNotice(TaskStore.Notice(
+                text: "在笔记库「\(source.vaultName)」中找不到「\(source.noteName)」，请确认已保存该笔记",
+                isError: true, autoDismissAfter: 8
+            ))
+            return
+        }
+        config.sourcePath = resolved.path
+        config.vault = source.vaultName
+        config.noteFile = noteFileRelativeToVault(resolved.path, vaultPath: resolved.vaultPath)
+        config.save()
+        DiagLog.log("obsidian pick → \(resolved.path) vault=\(source.vaultName)")
+        store?.reloadConfiguration()
+        store?.showNotice(TaskStore.Notice(text: "任务源已设为 \(source.noteName)", isError: false, autoDismissAfter: 4))
+    }
+
+    /// Folder source: watch every Markdown note inside a directory.
+    private func promptForFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "选择一个文件夹，GlassIsland 将监控其中全部 Markdown 笔记的待办"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        config.sourcePath = url.path
+        if config.vault.isEmpty {
+            config.vault = url.lastPathComponent
+        }
+        config.noteFile = url.lastPathComponent
+        config.save()
+        DiagLog.log("folder pick → \(url.path)")
+        store?.reloadConfiguration()
+        store?.showNotice(TaskStore.Notice(text: "已监控文件夹 \(url.lastPathComponent)", isError: false, autoDismissAfter: 4))
+    }
+
+    private func noteFileRelativeToVault(_ path: String, vaultPath: String) -> String {
+        guard path.hasPrefix(vaultPath + "/") else { return (path as NSString).lastPathComponent }
+        return String(path.dropFirst(vaultPath.count + 1))
     }
 
     @objc private func menuRefresh(_ sender: NSMenuItem) { store?.refresh() }

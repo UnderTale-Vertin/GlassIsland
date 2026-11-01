@@ -33,7 +33,7 @@ final class WriteBackTests: XCTestCase {
         let url = noteURL()
         try write("- [ ] 甲\n- [ ] 乙\n", to: url)
         let result = try TaskWriter.toggle(sourcePath: url.path, line: "- [ ] 甲", lineNumber: 0, done: true)
-        XCTAssertEqual(result, ToggleResult(line: "- [x] 甲", lineNumber: 0))
+        XCTAssertEqual(result, ToggleResult(filePath: url.path, line: "- [x] 甲", lineNumber: 0))
         XCTAssertEqual(try read(url), Data("- [x] 甲\n- [ ] 乙\n".utf8))
     }
 

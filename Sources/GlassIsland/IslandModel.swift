@@ -11,6 +11,9 @@ final class IslandModel: ObservableObject {
         case refresh
         case openNote
         case pickNote
+        case pickFolder
+        case startObsidianPick
+        case finishObsidianPick
         case quit
     }
 
@@ -21,10 +24,15 @@ final class IslandModel: ObservableObject {
     /// Inline options section (replaces popup menus, which cannot open in a
     /// non-activating panel).
     @Published var showOptions = false
+    /// "从 Obsidian 选择当前笔记" flow in progress.
+    @Published var pickingFromObsidian = false
     /// Window-pinning state for floating mode (kept in Config, mirrored here).
     @Published var onTop = false
     /// Highlighted row (hover) for the circle tint.
     @Published var hoveredLine: String?
+    /// Frames of interactive elements in panel space (top-left origin),
+    /// reported by SwiftUI; the AppKit overlay places real click targets.
+    @Published var controlFrames: [String: CGRect] = [:]
 
     var onMenuAction: (MenuAction) -> Void = { _ in }
 
@@ -87,6 +95,12 @@ final class IslandModel: ObservableObject {
             visible = true
             expanded = true
             showOptions = false
+        }
+    }
+
+    func reportFrame(_ id: String, _ frame: CGRect) {
+        if controlFrames[id] != frame {
+            controlFrames[id] = frame
         }
     }
 

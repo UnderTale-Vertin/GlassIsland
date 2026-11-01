@@ -6,8 +6,11 @@ struct TaskItem: Identifiable, Equatable {
     let line: String
     let body: String
     let html: String
+    /// Absolute path of the note this task came from (single-file sources:
+    /// the configured note; folder sources: the file within the folder).
+    var filePath: String = ""
 
-    var id: String { "\(lineNumber)|\(line)" }
+    var id: String { "\(filePath)|\(lineNumber)|\(line)" }
 }
 
 /// Runs the original project's markdown-it extraction (Resources/vendor/tasks.js)
