@@ -5,7 +5,7 @@ enum IslandMode: String, Codable {
     case floating
 }
 
-struct Config: Codable {
+struct Config: Codable, Equatable {
     var vault: String = ""
     var sourcePath: String = ""
     var noteFile: String = ""

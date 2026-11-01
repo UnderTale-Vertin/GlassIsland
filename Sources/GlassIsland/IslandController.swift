@@ -179,6 +179,7 @@ final class IslandController: NSObject, NSWindowDelegate {
     /// Places invisible AppKit buttons over the frames SwiftUI reported and
     /// (re)binds their actions. Runs whenever frames or panel size change.
     private func syncControls() {
+        controlsOverlay.frame = hosting.bounds
         let height = hosting.bounds.height
         let frames = model.controlFrames
         // Drop stale buttons; the frames dictionary is the source of truth.
@@ -198,12 +199,20 @@ final class IslandController: NSObject, NSWindowDelegate {
                 button = OverlayButton(controlID: id)
                 bindAction(button)
                 controlsOverlay.addSubview(button)
+                DiagLog.log("control added \(id)")
             }
             if button.frame != frame {
                 button.frame = frame
             }
         }
+        let count = controlsOverlay.subviews.count
+        if count != lastControlCount {
+            lastControlCount = count
+            DiagLog.log("controls synced: \(count) [\(controlsOverlay.subviews.compactMap { ($0 as? OverlayButton)?.controlID }.joined(separator: ", "))]")
+        }
     }
+
+    private var lastControlCount = -1
 
     private func bindAction(_ button: OverlayButton) {
         let bridge = IslandControlBridge.shared
@@ -304,7 +313,10 @@ final class IslandController: NSObject, NSWindowDelegate {
                   NSStringFromSize(size), model.expanded ? 1 : 0, model.mode.rawValue, shrinking ? 1 : 0)
         }
         guard size.width > 1, size.height > 1 else { return }
-        defer { layoutToggleZone() }
+        defer {
+            layoutToggleZone()
+            syncControls()
+        }
         if model.mode == .island {
             // While collapsing, keep the window large until the morph ends.
             if shrinking { return }

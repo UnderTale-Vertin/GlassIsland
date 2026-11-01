@@ -18,6 +18,12 @@ enum OpenLinkError: LocalizedError, Equatable {
 /// and obsidian links must point at the configured vault.
 enum OpenLink {
     static func open(urlString: String, vault: String) throws {
+        let url = try validate(urlString: urlString, vault: vault)
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Validation only (no side effects) — separately testable.
+    static func validate(urlString: String, vault: String) throws -> URL {
         guard let url = URL(string: urlString), let scheme = url.scheme?.lowercased() else {
             throw OpenLinkError.invalidURL
         }
@@ -37,7 +43,7 @@ enum OpenLink {
                 throw OpenLinkError.foreignVault
             }
         }
-        NSWorkspace.shared.open(url)
+        return url
     }
 
     static func noteURL(vault: String, noteFile: String) -> String {
