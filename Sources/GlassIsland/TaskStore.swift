@@ -245,6 +245,15 @@ final class TaskStore: ObservableObject {
             return
         }
         let cfg = configProvider()
+        // The sample/standalone folder is not a registered Obsidian vault;
+        // opening its URL would just make Obsidian complain.
+        if !sourceIsFolder, ObsidianSupport.vaultPath(named: cfg.vault) == nil {
+            showNotice(Notice(
+                text: "当前笔记不在 Obsidian 笔记库里（示例笔记）。用「… → 从 Obsidian 选择当前笔记」切换到真实笔记后即可跳转",
+                isError: false, autoDismissAfter: 8
+            ))
+            return
+        }
         openLink(urlString: OpenLink.noteURL(vault: cfg.vault, noteFile: cfg.noteFile))
     }
 
