@@ -40,7 +40,13 @@ final class ToggleZoneView: NSView {
     override func rightMouseDown(with event: NSEvent) {
         DispatchQueue.main.async { self.onContextMenu() }
     }
-    override func hitTest(_ point: NSPoint) -> NSView? { self }
+    // NSHostingView asks subviews without a containment pre-check, so this
+    // MUST verify the point itself — returning self unconditionally would
+    // swallow every click in the panel.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let superview else { return nil }
+        return bounds.contains(convert(point, from: superview)) ? self : nil
+    }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 

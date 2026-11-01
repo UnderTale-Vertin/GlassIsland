@@ -10,6 +10,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        var launchNote = "launch"
+        if let exe = Bundle.main.executableURL,
+           let attrs = try? FileManager.default.attributesOfItem(atPath: exe.path),
+           let built = attrs[.modificationDate] as? Date {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MM-dd HH:mm:ss"
+            launchNote += " build=\(formatter.string(from: built))"
+        }
+        DiagLog.log("\(launchNote) mode=\(config.mode)")
         // GLASSISLAND_DIAG=1: dump windows without showing the island; =2:
         // run the normal launch flow first, then dump. Either way exits.
         let diagnosticMode = ProcessInfo.processInfo.environment["GLASSISLAND_DIAG"]

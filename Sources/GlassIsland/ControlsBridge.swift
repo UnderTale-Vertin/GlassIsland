@@ -44,7 +44,12 @@ final class OverlayButton: NSView {
         }
     }
 
-    override func hitTest(_ point: NSPoint) -> NSView? { self }
+    // Same containment rule as ToggleZoneView: never claim clicks outside
+    // this button's frame.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let superview else { return nil }
+        return bounds.contains(convert(point, from: superview)) ? self : nil
+    }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     // Dynamic dispatch goes through IslandControlBridge.fire (registry).
 
