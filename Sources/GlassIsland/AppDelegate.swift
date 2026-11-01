@@ -138,9 +138,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store?.openNote()
         case .pickNote:
             promptForNote(firstRun: false)
+        case .showPanelMenu:
+            popupContextMenu()
         case .quit:
             NSApp.terminate(nil)
         }
+    }
+
+    /// Native NSMenu popped up at the mouse location. SwiftUI Menu cannot
+    /// open inside a non-activating panel, so the panel "…" button and the
+    /// right-click on the capsule/title both land here.
+    private func popupContextMenu() {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        let refresh = NSMenuItem(title: "立即刷新", action: #selector(menuRefresh(_:)), keyEquivalent: "")
+        refresh.target = self
+        refresh.isEnabled = true
+        menu.addItem(refresh)
+        if config.isConfigured {
+            let open = NSMenuItem(title: "在 Obsidian 中打开", action: #selector(menuOpenNote(_:)), keyEquivalent: "")
+            open.target = self
+            open.isEnabled = true
+            menu.addItem(open)
+        }
+        menu.addItem(.separator())
+
+        let island = NSMenuItem(title: "灵动岛模式", action: model?.mode != .island ? #selector(menuIslandMode(_:)) : nil, keyEquivalent: "")
+        island.target = self
+        island.state = model?.mode == .island ? .on : .off
+        menu.addItem(island)
+        let floating = NSMenuItem(title: "桌面浮窗模式", action: model?.mode != .floating ? #selector(menuFloatingMode(_:)) : nil, keyEquivalent: "")
+        floating.target = self
+        floating.state = model?.mode == .floating ? .on : .off
+        menu.addItem(floating)
+        if model?.mode == .floating {
+            let onTop = NSMenuItem(title: config.pinnedOnTop ? "取消窗口置顶" : "窗口置顶", action: #selector(menuToggleOnTop(_:)), keyEquivalent: "")
+            onTop.target = self
+            onTop.state = config.pinnedOnTop ? .on : .off
+            menu.addItem(onTop)
+        }
+        menu.addItem(.separator())
+
+        let pick = NSMenuItem(title: "选择任务笔记…", action: #selector(menuPickNote(_:)), keyEquivalent: "")
+        pick.target = self
+        pick.isEnabled = true
+        menu.addItem(pick)
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "退出 GlassIsland", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 
     @objc private func menuRefresh(_ sender: NSMenuItem) { store?.refresh() }

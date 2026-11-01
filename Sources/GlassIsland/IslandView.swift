@@ -23,23 +23,7 @@ enum Palette {
     }
 }
 
-/// Shared menu items for the panel "…" button, the capsule context menu and
-/// (mirrored) the status bar item.
-enum IslandMenus {
-    @ViewBuilder
-    static func items(model: IslandModel, store: TaskStore) -> some View {
-        if model.mode == .floating {
-            Button(model.onTop ? "取消窗口置顶" : "窗口置顶") { model.onMenuAction(.toggleOnTop) }
-        }
-        Button(model.mode == .island ? "切换到桌面浮窗模式" : "切换到灵动岛模式") { model.onMenuAction(.switchMode) }
-        Divider()
-        Button("立即刷新") { store.refresh() }
-        Button("在 Obsidian 中打开") { model.onMenuAction(.openNote) }
-        Divider()
-        Button("选择任务笔记…") { model.onMenuAction(.pickNote) }
-        Button("退出 GlassIsland") { model.onMenuAction(.quit) }
-    }
-}
+// MARK: - Root
 
 struct IslandRootView: View {
     @ObservedObject var model: IslandModel
@@ -128,9 +112,6 @@ struct CapsuleContent: View {
         .frame(height: 34)
         .contentShape(Capsule())
         .onHover { model.setHovering($0) }
-        .contextMenu {
-            IslandMenus.items(model: model, store: store)
-        }
         .accessibilityLabel("Obsidian 待办：\(store.tasks.count) 项未完成")
     }
 }
@@ -172,14 +153,11 @@ struct PanelContent: View {
                 store.openNote()
             }
             .disabled(store.pending)
-            Menu {
-                IslandMenus.items(model: model, store: store)
-            } label: {
-                MenuLabelIcon()
+            // SwiftUI Menu cannot open inside a non-activating panel; the
+            // AppKit layer pops up a native NSMenu instead (see AppDelegate).
+            IconButton(systemName: "ellipsis", help: "窗口选项（右键胶囊/标题同此菜单）") {
+                model.onMenuAction(.showPanelMenu)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
         }
         .padding(EdgeInsets(top: 20, leading: 22, bottom: 14, trailing: 18))
     }
@@ -366,19 +344,6 @@ private struct IconButton: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(help)
-    }
-}
-
-/// Menu label: plain glyph that keeps the icon-button look.
-private struct MenuLabelIcon: View {
-    var body: some View {
-        Image(systemName: "ellipsis")
-            .resizable()
-            .scaledToFit()
-            .frame(width: 15, height: 15)
-            .foregroundColor(Palette.muted)
-            .frame(width: 32, height: 32)
-            .contentShape(Rectangle())
     }
 }
 

@@ -33,8 +33,12 @@ final class HotspotView: NSView {
 /// that cannot be swallowed.
 final class ToggleZoneView: NSView {
     var onToggle: () -> Void = {}
+    var onContextMenu: () -> Void = {}
     override func mouseDown(with event: NSEvent) {
         DispatchQueue.main.async { self.onToggle() }
+    }
+    override func rightMouseDown(with event: NSEvent) {
+        DispatchQueue.main.async { self.onContextMenu() }
     }
     override func hitTest(_ point: NSPoint) -> NSView? { self }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -103,7 +107,10 @@ final class IslandController: NSObject, NSWindowDelegate {
         panel.contentView = hosting
         applyWindowMask()
         toggleZoneView.onToggle = { [weak self] in self?.handleToggleZone() }
-        toggleZoneView.toolTip = "点一下固定；再点一下消失"
+        toggleZoneView.onContextMenu = { [weak self] in
+            self?.model.onMenuAction(.showPanelMenu)
+        }
+        toggleZoneView.toolTip = "点一下固定；再点一下消失；右键菜单"
         hosting.addSubview(toggleZoneView)
         sizeObservation = hosting.observe(\.intrinsicContentSize, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated {

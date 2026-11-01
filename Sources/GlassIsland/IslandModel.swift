@@ -12,6 +12,7 @@ final class IslandModel: ObservableObject {
         case refresh
         case openNote
         case pickNote
+        case showPanelMenu
         case quit
     }
 
