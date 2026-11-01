@@ -33,6 +33,7 @@ final class HotspotView: NSView {
 final class ToggleZoneView: NSView {
     var onToggle: () -> Void = {}
     var onContextMenu: () -> Void = {}
+    var onHover: ((Bool) -> Void)?
     override func mouseDown(with event: NSEvent) {
         DispatchQueue.main.async { self.onToggle() }
     }
@@ -44,6 +45,13 @@ final class ToggleZoneView: NSView {
         return bounds.contains(convert(point, from: superview)) ? self : nil
     }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
 }
 
 /// Owns the island window: passive glass background hosting, the AppKit
@@ -137,6 +145,35 @@ final class IslandController: NSObject, NSWindowDelegate {
             .sink { [weak self] _ in self?.refit() }
             .store(in: &cancellables)
 
+        // The show/hide switch for the whole island.
+        model.$visible
+            .receive(on: RunLoop.main)
+            .sink { [weak self] visible in
+                guard let self else { return }
+                if visible {
+                    self.refit()
+                    self.panel.orderFrontRegardless()
+                } else {
+                    self.panel.orderOut(nil)
+                }
+            }
+            .store(in: &cancellables)
+
+        toggleZoneView.onHover = { [weak self] hovering in
+            guard let self else { return }
+            if hovering {
+                self.model.setHovering(true)
+            } else if !self.model.expanded {
+                // Leaving the untouched capsule hides it again; when the
+                // panel is open the full-panel tracker owns the exit.
+                self.model.setHovering(false)
+            }
+        }
+
+        panelContent.onHover = { [weak self] hovering in
+            self?.model.setHovering(hovering)
+        }
+
         store.$tasks.receive(on: RunLoop.main).sink { [weak self] tasks in
             self?.capsuleContent.update(count: tasks.count, configured: self?.store.configured ?? false)
         }.store(in: &cancellables)
@@ -210,16 +247,15 @@ final class IslandController: NSObject, NSWindowDelegate {
 
         // Sync the visible content with the phase.
         panelContent.isHidden = !expanded
-        capsuleContent.isHidden = !expanded
+        capsuleContent.isHidden = expanded
         if expanded {
             capsuleContent.frame = NSRect(x: 0, y: 0, width: 0, height: 0)
         } else {
             capsuleContent.frame = NSRect(x: (width - 90) / 2, y: 0, width: 90, height: 34)
         }
         contentView.layer?.cornerRadius = expanded ? 28 : 17
-        toggleZoneView.isHidden = !expanded
         if !expanded {
-            toggleZoneView.frame = NSRect(x: (width - 150) / 2, y: 2, width: 150, height: 32)
+            toggleZoneView.frame = NSRect(x: 0, y: 0, width: 90, height: 34)
         } else {
             toggleZoneView.frame = NSRect(x: 12, y: 4, width: 150, height: 56)
         }

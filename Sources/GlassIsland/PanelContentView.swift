@@ -268,6 +268,7 @@ final class CapsuleContentView: NSView {
 final class PanelContentView: NSView {
     var onHeightChanged: ((CGFloat) -> Void)?
     var onOpenLink: (URL) -> Void = { _ in }
+    var onHover: ((Bool) -> Void)?
 
     private let model: IslandModel
     private let store: TaskStore
@@ -599,6 +600,15 @@ final class PanelContentView: NSView {
         }
         return maxY + 12
     }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { // Esc
