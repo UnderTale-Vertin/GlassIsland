@@ -108,9 +108,9 @@ final class IslandController: NSObject, NSWindowDelegate {
         applyWindowMask()
         toggleZoneView.onToggle = { [weak self] in self?.handleToggleZone() }
         toggleZoneView.onContextMenu = { [weak self] in
-            self?.model.onMenuAction(.showPanelMenu)
+            self?.model.optionsToggled()
         }
-        toggleZoneView.toolTip = "点一下固定；再点一下消失；右键菜单"
+        toggleZoneView.toolTip = "点一下固定；再点一下消失；右键选项"
         hosting.addSubview(toggleZoneView)
         sizeObservation = hosting.observe(\.intrinsicContentSize, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated {

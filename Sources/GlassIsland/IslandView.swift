@@ -125,12 +125,21 @@ struct PanelContent: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            if model.showOptions {
+                optionsSection
+            }
             scrollArea
             footer
         }
         .frame(width: 344)
         .onHover { model.setHovering($0) }
-        .onExitCommand { model.dismiss() }
+        .onExitCommand {
+            if model.showOptions {
+                model.showOptions = false
+            } else {
+                model.dismiss()
+            }
+        }
     }
 
     private var header: some View {
@@ -153,13 +162,57 @@ struct PanelContent: View {
                 store.openNote()
             }
             .disabled(store.pending)
-            // SwiftUI Menu cannot open inside a non-activating panel; the
-            // AppKit layer pops up a native NSMenu instead (see AppDelegate).
-            IconButton(systemName: "ellipsis", help: "窗口选项（右键胶囊/标题同此菜单）") {
-                model.onMenuAction(.showPanelMenu)
+            // Pure-SwiftUI inline options: popup menus (SwiftUI Menu or
+            // NSMenu.popUp) cannot open from a non-activating panel.
+            IconButton(
+                systemName: "ellipsis",
+                help: "选项",
+                tint: model.showOptions ? Palette.blue : nil
+            ) {
+                model.optionsToggled()
             }
         }
         .padding(EdgeInsets(top: 20, leading: 22, bottom: 14, trailing: 18))
+    }
+
+    @ViewBuilder
+    private var optionsSection: some View {
+        VStack(spacing: 1) {
+            OptionRow(icon: "arrow.clockwise", label: "立即刷新") {
+                store.refresh()
+                model.showOptions = false
+            }
+            OptionRow(icon: "arrow.up.forward.app", label: "在 Obsidian 中打开") {
+                model.showOptions = false
+                model.onMenuAction(.openNote)
+            }
+            OptionRow(
+                icon: model.mode == .island ? "rectangle.on.rectangle" : "dot.square",
+                label: model.mode == .island ? "切换到桌面浮窗模式" : "切换到灵动岛模式"
+            ) {
+                model.showOptions = false
+                model.onMenuAction(.switchMode)
+            }
+            if model.mode == .floating {
+                OptionRow(
+                    icon: "pin",
+                    label: model.onTop ? "取消窗口置顶" : "窗口置顶"
+                ) {
+                    model.showOptions = false
+                    model.onMenuAction(.toggleOnTop)
+                }
+            }
+            Divider().overlay(Palette.separator).padding(.vertical, 3)
+            OptionRow(icon: "doc.text", label: "选择任务笔记…") {
+                model.showOptions = false
+                model.onMenuAction(.pickNote)
+            }
+            OptionRow(icon: "power", label: "退出 GlassIsland", isDestructive: true) {
+                model.onMenuAction(.quit)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
@@ -320,6 +373,36 @@ private struct TaskRow: View {
             hovering = h
             hoveredLine = h ? task.line : nil
         }
+    }
+}
+
+private struct OptionRow: View {
+    let icon: String
+    let label: String
+    var isDestructive = false
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: icon)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 13, height: 13)
+                    .foregroundColor(hovering ? Palette.blue : Palette.muted)
+                Text(label)
+                    .font(.system(size: 13))
+                    .foregroundColor(hovering ? Palette.ink : Palette.muted)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? Palette.control : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
     }
 }
 

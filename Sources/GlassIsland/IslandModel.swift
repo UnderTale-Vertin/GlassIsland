@@ -6,13 +6,11 @@ import Combine
 /// expands it, and moving away hides it completely.
 final class IslandModel: ObservableObject {
     enum MenuAction {
-        case togglePin
         case toggleOnTop
         case switchMode
         case refresh
         case openNote
         case pickNote
-        case showPanelMenu
         case quit
     }
 
@@ -20,6 +18,9 @@ final class IslandModel: ObservableObject {
     @Published var expanded = false
     @Published var pinned = false
     @Published var mode: IslandMode
+    /// Inline options section (replaces popup menus, which cannot open in a
+    /// non-activating panel).
+    @Published var showOptions = false
     /// Window-pinning state for floating mode (kept in Config, mirrored here).
     @Published var onTop = false
     /// Highlighted row (hover) for the circle tint.
@@ -59,6 +60,19 @@ final class IslandModel: ObservableObject {
         }
     }
 
+    /// "…" button or right-click: open the inline options section.
+    func optionsToggled() {
+        if showOptions {
+            showOptions = false
+            return
+        }
+        hideWork?.cancel()
+        hideWork = nil
+        visible = true
+        expanded = true
+        showOptions = true
+    }
+
     /// Click on the toggle zone (capsule body / panel title area, an AppKit
     /// view — not a SwiftUI gesture): first click pins and expands, the next
     /// click hides everything. Floating mode ignores it.
@@ -72,6 +86,7 @@ final class IslandModel: ObservableObject {
             pinned = true
             visible = true
             expanded = true
+            showOptions = false
         }
     }
 
@@ -90,6 +105,7 @@ final class IslandModel: ObservableObject {
     /// Esc or outside click: hide everything.
     func dismiss() {
         pinned = false
+        showOptions = false
         hideWork?.cancel()
         hideWork = nil
         if mode == .island {
@@ -104,6 +120,7 @@ final class IslandModel: ObservableObject {
         hideWork?.cancel()
         hideWork = nil
         pinned = false
+        showOptions = false
         visible = (newMode == .floating)
         expanded = (newMode == .floating)
     }
