@@ -4,8 +4,8 @@
 
 ## 项目身份
 
-- **项目根**：`/Users/moriartycharlotte/.zcode/workspace/draft-aa48b891-d59b-4a84-97da-15432421bccc/GlassIsland`
-- **GitHub**：`UnderTale-Vertin/GlassIsland`（**私有**，main 分支）
+- **项目根**：本机克隆目录下的 `GlassIsland/`（git clone 本仓库即可，路径以实际克隆位置为准）
+- **GitHub**：`UnderTale-Vertin/GlassIsland`（main 分支）
 - **来源**：[Wang060919/ObsidianGlassTasks](https://github.com/Wang060919/ObsidianGlassTasks) 的 macOS 移植（灵动岛形态），引用与第三方许可见 `README.md` 顶部与 `THIRD-PARTY-NOTICES.md`
 - **平台**：macOS 26（Liquid Glass），Swift 6.3 / SDK 26.5，SPM 工程，零第三方 Swift 依赖（markdown-it 走 JavaScriptCore）
 - **运行方式**：`scripts/build-app.sh` → `build/GlassIsland.app`；当前用户本机正在运行
@@ -29,6 +29,7 @@
 | `OpenLink.swift` | 链接校验（Action.ps1 open 语义）：仅 http/https/obsidian://open 且 vault 匹配、无多余参数；validate 纯函数可测 |
 | `Config.swift` | `~/Library/Application Support/GlassIsland/config.json`；**decodeIfPresent 逐字段容错**（缺键不炸） |
 | `DiagLog.swift` | 始终开启的审计日志 → `~/Library/Application Support/GlassIsland/diag.log` |
+| `Res.swift` | 资源定位：兼容 SPM 开发布局与组装后的 .app（Bundle.main/module 双查），注册 Parisienne 花体字体 |
 | `IslandModel.swift` | 交互状态机（visible/expanded/pinned/showOptions/mode），**有单元测试锁定** |
 | `Tests/GlassIslandTests/` | 36 条：Extraction(5) / WriteBack(10) / IslandModel(5) / Obsidian+Folder(6) / Regression(10: Config 解码/OpenLink/InlineHTML/双链路径) |
 | `scripts/build-app.sh` | release 构建 + 组装 .app（含资源、ad-hoc 签名） |
@@ -66,7 +67,7 @@ tail -3 ~/Library/Application\ Support/GlassIsland/diag.log   # launch build= �
 | 7 | Obsidian 打开笔记→点「完成」 | 自动配好 vault/路径 | `obsidian pick → …`；未授权则弹库内面板（`vault panel pick → …`） |
 | 8 | 点任务圆圈 | Obsidian 中该行变 `[x]` | `circle click` + `toggle OK …` |
 | 9 | 点「撤销」 | `[ ]` 还原 | `label 撤销` + `undo OK …` |
-| 10 | 右键标题 | 选项区展开 | `toggleZone`（右键路径） |
+| 10 | 右键标题 | 选项区展开 | `toggleZone`（与左键同串，日志不可区分；右键代码路径 `rightMouseDown` 已确认存在） |
 
 ### C. 数据安全检查（重点）
 
@@ -97,4 +98,16 @@ tail -3 ~/Library/Application\ Support/GlassIsland/diag.log   # launch build= �
 - GitHub 仓库当前**私有**；是否转公开/删除由用户定夺
 - 开机自启（SMAppService）未做（计划内可选项，用户未点头）
 - 玻璃 morph 视觉手感与原生控件外观（AppKit 化的代价）待用户最终认可
-- 用户对 10 步验收的完整通过尚未逐条确认（历史验证到：↗/…/选项行均触发正常，日志可查）
+
+## 检查记录
+
+### 2026-11-04（A→F 全面检查）
+
+- **A ✅**：独立 scratch 干净构建 0 warning 0 error；`swift test` 36/36；单实例；launch 行齐全
+- **B ⚠️**：第 2/4/5/6 步有日志证据（11/11/13/3 次）；第 7/8/9 步 **0 证据**（`obsidian pick`/`circle click`/`toggle OK`/`undo OK` 等语句源码存在，但日志 356 行内从未出现，交互全部集中在 11-01 当天）；已升级至 F 节
+- **C ✅**：Swift/JS 双侧无网络与遥测 API；OpenLink 白名单 http/https/obsidian + vault 匹配；写回 10 条测试锁定
+- **D ✅**：Config `decodeIfPresent` ×7；NoteWatcher dir/file 双 DispatchSource + 轮询；刘海替代入口在
+- **E ✅**：7 坑代码侧全部落实（isFlipped ×3 / ToggleZone 预检 / 玻璃层不可交互 / 无 popUp / decodeIfPresent / 假重启 / onTap）；坑 6 本次踩中变体——运行实例原为 11-01 07:25:33 构建，落后 HEAD 收尾提交
+- **部署修正**：`pkill -9` + `scripts/build-app.sh`（release 零警告）+ 重开，新实例 `launch build=11-04 02:33:41 mode=island` 实证，HEAD（bd0c33b）已部署运行
+- 仓库可见性 `gh` 实证：PRIVATE，与本文一致
+- **10 步验收缺口（2026-11-04 检查实证）**：第 7/8/9 步（选源完成/勾选写回/撤销）在日志期内 **0 次真实执行**——核心数据路径目前仅单元测试背书，无端到端实测；第 1/3 步依赖人工观察（面板收起无日志）；第 10 步与左键共用日志串不可区分。待用户按 B 表补走 7→8→9 并对账 diag.log
